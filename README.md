@@ -11,7 +11,7 @@ At First install python 3.7+ on your os then install pillow ,Socket with pip and
 - `pip install socket`
 
 After that get IEService with git
-- git `git clone https://github.com/alexbers/mtprotoproxy.git`
+- git `https://github.com/amqq/IEService.git`
 
 ## Run IEService ##
 
