@@ -1,7 +1,7 @@
 #! python
 """
 
- Date :		    Today is 2021-08-20
+ Date :		    Today is 2021-08-21
  Creator :		This script Created by amqq.ir
  Info :		    This script will be resize and edit images
  Requirement :	This script can be run on all os
@@ -15,7 +15,7 @@ import io
 import os
 import socket
 import traceback
-
+import ssl
 from PIL import Image
 
 from AmLogger import *
@@ -24,8 +24,7 @@ from urllib.parse import parse_qs
 from _thread import start_new_thread
 
 # init default global mutable variables
-
-PORT = 5001
+PORT = 2083
 OPTIMIZE_IMAGE = True
 DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH = "blankpic.jpg"
 DEFAULT_RESPONSE_IMAGE_QUALITY = 90
@@ -34,10 +33,12 @@ DEFAULT_RESPONSE_IMAGE_HEIGHT = 200
 DEFAULT_RESPONSE_IMAGE_WEIGHT = 300
 ALL_IMAGE_PATH = ""
 LOG_FILE = "ies.log"
-SCRIPT_VERSION_NAME = "v1014"
+SCRIPT_VERSION_NAME = "v1056"
 SOCKET_LISTEN_NUMBER = 5
-SOCKET_RECEIVED_BUFFER_SIZE = 2048
-
+SOCKET_RECEIVED_BUFFER_SIZE = 4096
+SSL_KEY_PATH = "default_cert.key"
+SSL_CERT_PATH = "default_cert.pem"
+USE_SSL = False
 # init immutable variables
 DEBUG_MODE = False
 ACTION = "action"
@@ -51,6 +52,8 @@ RIGHT = "right"
 BOTTOM = "bottom"
 IMAGE_PATH = "path"
 ACCEPTED_RESPONSE_FORMAT = ['webp', 'jpeg', 'png']
+ACCEPTED_RESIZE_ACTIONS = ['r', 'R', 'resize', 'CR', 'cr']
+ACCEPTED_CROP_ACTIONS = ['c', 'C', 'crop', 'CR', 'cr']
 
 
 def programExitHandler():
@@ -146,11 +149,10 @@ def requestParser(request):
         except KeyError:
             return False
 
-    if not os.path.isfile(ALL_IMAGE_PATH + request_params[IMAGE_PATH]):
+    if not os.path.isfile(request_params[IMAGE_PATH]):
         return False
 
-    if request_params[ACTION] == "resize" or request_params[ACTION] == "R" or request_params[ACTION] == "r" or \
-            request_params[ACTION] == "CR" or request_params[ACTION] == "cr":
+    if request_params[ACTION] in ACCEPTED_RESIZE_ACTIONS:
 
         try:
             request_params[WEIGHT] = int(parse_qs(request_parsed.query)['w'][0])
@@ -171,8 +173,7 @@ def requestParser(request):
                 except:
                     return False
 
-    if request_params[ACTION] == "crop" or request_params[ACTION] == "C" or request_params[ACTION] == "c" or \
-            request_params[ACTION] == "CR" or request_params[ACTION] == "cr":
+    if request_params[ACTION] in ACCEPTED_CROP_ACTIONS:
 
         try:
             request_params[LEFT] = int(parse_qs(request_parsed.query)['l'][0])
@@ -206,7 +207,7 @@ def requestParser(request):
             except KeyError:
                 request_params[BOTTOM] = int(request_params[TOP])
 
-    else:
+    if request_params[ACTION] not in ACCEPTED_CROP_ACTIONS + ACCEPTED_RESIZE_ACTIONS:
         return False
 
     return request_params
@@ -225,7 +226,7 @@ def requestHandler(request):
     if isValidRequest(request):
         request_params = requestParser(request)
         if DEBUG_MODE:
-            log.Success(f"Request Params => {request_params}")
+            log.Info(f"Request Params => {request_params}")
         if not request_params:
             return imageResizer(DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH, DEFAULT_RESPONSE_IMAGE_HEIGHT,
                                 DEFAULT_RESPONSE_IMAGE_WEIGHT, DEFAULT_RESPONSE_IMAGE_FORMAT,
@@ -251,7 +252,7 @@ def requestHandler(request):
                         DEFAULT_RESPONSE_IMAGE_QUALITY), DEFAULT_RESPONSE_IMAGE_FORMAT
 
 
-def responseSender(data, response_format, connection=socket.socket()):
+def responseSender(data, response_format, connection):
     content_type = "Content-Type: image/" + response_format
     HTTP_RESPONSE = b'\r\n'.join([
         b"HTTP/1.1 200 OK",
@@ -271,9 +272,9 @@ def connectionHandler(connection, _):
 
 
 def mainSocketRequestHandler():
-    global MainCDNSocket
+    global main_ies_socket
     while True:
-        client_connection, _ = MainCDNSocket.accept()
+        client_connection, _ = main_ies_socket.accept()
         if DEBUG_MODE:
             log.Info(f"new connection from => {_[0]}:{_[1]}")
         start_new_thread(connectionHandler, (client_connection, _))
@@ -282,7 +283,7 @@ def mainSocketRequestHandler():
 def readDefaultVariablesFromUser():
     global PORT, DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH, DEFAULT_RESPONSE_IMAGE_QUALITY
     global DEFAULT_RESPONSE_IMAGE_WEIGHT, DEFAULT_RESPONSE_IMAGE_HEIGHT, DEFAULT_RESPONSE_IMAGE_FORMAT
-    global OPTIMIZE_IMAGE, ALL_IMAGE_PATH
+    global OPTIMIZE_IMAGE, ALL_IMAGE_PATH, USE_SSL, SSL_KEY_PATH, SSL_CERT_PATH
     if not DEBUG_MODE:
         try:
             log.ScriptSays("there are some small question for run this script")
@@ -315,7 +316,15 @@ def readDefaultVariablesFromUser():
                 OPTIMIZE_IMAGE = True
             else:
                 OPTIMIZE_IMAGE = False
-
+            log.ScriptSays("if you want to use ssl type 'y' else type 'n' ")
+            if input("turn on ssl? :") == "y":
+                USE_SSL = True
+                log.ScriptSays("please type ssl cert.key path")
+                SSL_KEY_PATH = int("SSL key path : ")
+                log.ScriptSays("please type ssl default_cert.pem path")
+                SSL_CERT_PATH = int("SSL cert path : ")
+            else:
+                USE_SSL = False
             log.ScriptSays("Image editing service will be run with this config :")
             log.Info(f"PORT : {PORT}")
             log.Info(f"DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH : {DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH}")
@@ -325,6 +334,9 @@ def readDefaultVariablesFromUser():
             log.Info(f"DEFAULT_RESPONSE_IMAGE_FORMAT : {DEFAULT_RESPONSE_IMAGE_FORMAT}")
             log.Info(f"ALL_IMAGE_PATH : {ALL_IMAGE_PATH}")
             log.Info(f"OPTIMIZE_IMAGE : {OPTIMIZE_IMAGE}")
+            log.Info(f"USE_SSL : {USE_SSL}")
+            log.Info(f"SSL_KEY_PATH : {SSL_KEY_PATH}")
+            log.Info(f"SSL_CERT_PATH : {SSL_CERT_PATH}")
             log.ScriptSays("if you want to start image editing service whit above config type 'y' else type 'n'")
             if input("Start image editing service ? : ") == "y":
                 log.Info("Ok, Loading requirements...")
@@ -339,7 +351,7 @@ def readDefaultVariablesFromUser():
 
 if __name__ == '__main__':
     # initializing logger and exit handler
-    log = AmLogger(colored_logs=True, save_logs=True, log_file=LOG_FILE)
+    log = AmLogger(colored_logs=False, save_logs=True, log_file=LOG_FILE)
     atexit.register(programExitHandler)
     # saying hello :)
     log.ScriptSays("Hello,")
@@ -348,9 +360,21 @@ if __name__ == '__main__':
         log.Info("Debug mode is activated")
     # Getting user desired value ; this is make more user friendly :)
     readDefaultVariablesFromUser()
+    # initialize ssl with socket
+    if USE_SSL:
+        raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        main_ies_socket = ssl.wrap_socket(raw_socket, keyfile=SSL_KEY_PATH,
+                                          certfile=SSL_CERT_PATH,
+                                          server_side=True,
+                                          cert_reqs=ssl.CERT_NONE,
+                                          ssl_version=ssl.PROTOCOL_SSLv23,
+                                          ca_certs=None,
+                                          do_handshake_on_connect=False,
+                                          suppress_ragged_eofs=True)
+    else:
+        main_ies_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # initialize Socket
-    MainCDNSocket = socket.socket()
-    MainCDNSocket.bind(("0.0.0.0", PORT))
-    MainCDNSocket.listen(SOCKET_LISTEN_NUMBER)
+    main_ies_socket.bind(("0.0.0.0", PORT))
+    main_ies_socket.listen(SOCKET_LISTEN_NUMBER)
     log.Info(f"image editing service Socket is listening at port : {PORT}")
     mainSocketRequestHandler()
