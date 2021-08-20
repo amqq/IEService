@@ -1,7 +1,7 @@
 #! python
 """
 
- Date :		    Today is 2021-08-16
+ Date :		    Today is 2021-08-20
  Creator :		This script Created by amqq.ir
  Info :		    This script will be resize and edit images
  Requirement :	This script can be run on all os
@@ -39,18 +39,51 @@ SOCKET_LISTEN_NUMBER = 5
 SOCKET_RECEIVED_BUFFER_SIZE = 2048
 
 # init immutable variables
-DEBUG_MODE = True
+DEBUG_MODE = False
 ACTION = "action"
 WEIGHT = "weight"
 HEIGHT = "height"
 QUALITY = "quality"
 FORMAT = "format"
+TOP = "top"
+LEFT = "left"
+RIGHT = "right"
+BOTTOM = "bottom"
 IMAGE_PATH = "path"
 ACCEPTED_RESPONSE_FORMAT = ['webp', 'jpeg', 'png']
 
 
 def programExitHandler():
     log.Info("Program Exit")
+
+
+def imageCropAndResizer(image_path, image_top, image_bottom, image_left, image_right, image_height, image_weight,
+                        image_format, image_quality):
+    imgByteArr = io.BytesIO()
+    quality = int(image_quality)
+    image_org = Image.open(image_path)
+    image_org_weight, image_org_height = image_org.size
+    newsier = (int(image_weight), int(image_height))
+    if image_format == "jpeg":
+        image_org = image_org.convert('RGB')
+    image_org = image_org.crop((image_left, image_top, image_org_weight - image_right, image_org_height - image_bottom))
+    image_org = image_org.resize(newsier)
+    image_org.save(imgByteArr, image_format, optimize=OPTIMIZE_IMAGE, quality=quality)
+    imgByteArr = imgByteArr.getvalue()
+    return imgByteArr
+
+
+def imageCropper(image_path, image_top, image_bottom, image_left, image_right, image_format, image_quality):
+    imgByteArr = io.BytesIO()
+    quality = int(image_quality)
+    image_org = Image.open(image_path)
+    image_org_weight, image_org_height = image_org.size
+    if image_format == "jpeg":
+        image_org = image_org.convert('RGB')
+    image_org = image_org.crop((image_left, image_top, image_org_weight - image_right, image_org_height - image_bottom))
+    image_org.save(imgByteArr, image_format, optimize=OPTIMIZE_IMAGE, quality=quality)
+    imgByteArr = imgByteArr.getvalue()
+    return imgByteArr
 
 
 def imageResizer(image_path, image_height, image_weight, image_format, image_quality):
@@ -112,10 +145,13 @@ def requestParser(request):
             request_params[IMAGE_PATH] = ALL_IMAGE_PATH + parse_qs(request_parsed.query)["path"][0]
         except KeyError:
             return False
+
     if not os.path.isfile(ALL_IMAGE_PATH + request_params[IMAGE_PATH]):
         return False
 
-    if request_params[ACTION] == "resize" or request_params[ACTION] == "R" or request_params[ACTION] == "r":
+    if request_params[ACTION] == "resize" or request_params[ACTION] == "R" or request_params[ACTION] == "r" or \
+            request_params[ACTION] == "CR" or request_params[ACTION] == "cr":
+
         try:
             request_params[WEIGHT] = int(parse_qs(request_parsed.query)['w'][0])
         except KeyError:
@@ -134,6 +170,42 @@ def requestParser(request):
                     request_params[HEIGHT] = getImageHeightByWeight(request_params[IMAGE_PATH], request_params[WEIGHT])
                 except:
                     return False
+
+    if request_params[ACTION] == "crop" or request_params[ACTION] == "C" or request_params[ACTION] == "c" or \
+            request_params[ACTION] == "CR" or request_params[ACTION] == "cr":
+
+        try:
+            request_params[LEFT] = int(parse_qs(request_parsed.query)['l'][0])
+        except KeyError:
+            try:
+                request_params[LEFT] = int(parse_qs(request_parsed.query)["left"][0])
+            except KeyError:
+                return False
+
+        try:
+            request_params[TOP] = int(parse_qs(request_parsed.query)['t'][0])
+        except KeyError:
+            try:
+                request_params[TOP] = int(parse_qs(request_parsed.query)["top"][0])
+            except KeyError:
+                return False
+
+        try:
+            request_params[RIGHT] = int(parse_qs(request_parsed.query)['r'][0])
+        except KeyError:
+            try:
+                request_params[RIGHT] = int(parse_qs(request_parsed.query)["right"][0])
+            except KeyError:
+                request_params[RIGHT] = int(request_params[LEFT])
+
+        try:
+            request_params[BOTTOM] = int(parse_qs(request_parsed.query)['b'][0])
+        except KeyError:
+            try:
+                request_params[BOTTOM] = int(parse_qs(request_parsed.query)["bottom"][0])
+            except KeyError:
+                request_params[BOTTOM] = int(request_params[TOP])
+
     else:
         return False
 
@@ -153,7 +225,7 @@ def requestHandler(request):
     if isValidRequest(request):
         request_params = requestParser(request)
         if DEBUG_MODE:
-            log.Info(f"Request Params => {request_params}")
+            log.Success(f"Request Params => {request_params}")
         if not request_params:
             return imageResizer(DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH, DEFAULT_RESPONSE_IMAGE_HEIGHT,
                                 DEFAULT_RESPONSE_IMAGE_WEIGHT, DEFAULT_RESPONSE_IMAGE_FORMAT,
@@ -162,6 +234,18 @@ def requestHandler(request):
         if request_params[ACTION] == "resize" or request_params[ACTION] == "R" or request_params[ACTION] == "r":
             return imageResizer(request_params[IMAGE_PATH], request_params[HEIGHT], request_params[WEIGHT],
                                 request_params[FORMAT], request_params[QUALITY]), request_params[FORMAT]
+
+        elif request_params[ACTION] == "crop" or request_params[ACTION] == "C" or request_params[ACTION] == "c":
+            return imageCropper(request_params[IMAGE_PATH], request_params[TOP], request_params[BOTTOM],
+                                request_params[LEFT], request_params[RIGHT], request_params[FORMAT],
+                                request_params[QUALITY]), request_params[FORMAT]
+
+        elif request_params[ACTION] == "CR" or request_params[ACTION] == "cr":
+            return imageCropAndResizer(request_params[IMAGE_PATH], request_params[TOP], request_params[BOTTOM],
+                                       request_params[LEFT], request_params[RIGHT], request_params[HEIGHT],
+                                       request_params[WEIGHT], request_params[FORMAT],
+                                       request_params[QUALITY]), request_params[FORMAT]
+
     return imageResizer(DEFAULT_RETURN_IMAGE_TO_INVALID_REQ_PATH, DEFAULT_RESPONSE_IMAGE_HEIGHT,
                         DEFAULT_RESPONSE_IMAGE_WEIGHT, DEFAULT_RESPONSE_IMAGE_FORMAT,
                         DEFAULT_RESPONSE_IMAGE_QUALITY), DEFAULT_RESPONSE_IMAGE_FORMAT
