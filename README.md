@@ -60,7 +60,7 @@ IEService Just work with url Api there are type of IEService url Api
 
 - Maximum Image Crop And Resize API :
 
-`http://<YOUR_DOMAIN>:5001/?action=crop&left=<IMAGE_LEFT>&right=<IMAGE_RIGHT>&top=<IMAGE_TOP>&bottom=<IMAGE_BOTTOM>&weight=<IMAGE_WEIGHT>&height=<IMAGE_HIGHT>&quality=<IMAGE_QUALITY>&format=<jpeg OR webp OR png>&path=<IMAGE_NAME>`
+`http://<YOUR_DOMAIN>:5001/?action=cr&left=<IMAGE_LEFT>&right=<IMAGE_RIGHT>&top=<IMAGE_TOP>&bottom=<IMAGE_BOTTOM>&weight=<IMAGE_WEIGHT>&height=<IMAGE_HIGHT>&quality=<IMAGE_QUALITY>&format=<jpeg OR webp OR png>&path=<IMAGE_NAME>`
 
 ## API Parameter ##
 
